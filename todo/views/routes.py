@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request 
 from todo.models import db 
 from todo.models.todo import Todo 
-from datetime import datetime
+from datetime import datetime, timedelta
  
 api = Blueprint('api', __name__, url_prefix='/api/v1') 
 
@@ -24,10 +24,23 @@ def health():
 @api.route('/todos', methods=['GET'])
 def get_todos():
     """Return the list of todo items"""
-    todos = Todo.query.all() 
-    result = [] 
-    for todo in todos: 
-        result.append(todo.to_dict()) 
+    completed = request.args.get('completed')
+    window = request.args.get('window')
+
+    todos = Todo.query.all()
+    result = []
+    for todo in todos:
+
+        if completed is not None:
+            if str(todo.completed).lower() != completed:
+                continue
+
+        if window is not None:
+            date_limit = datetime.utcnow() + timedelta(days=int(window))
+            if todo.deadline_at > date_limit:
+                continue
+
+        result.append(todo.to_dict())
     return jsonify(result)
 
 @api.route('/todos/<int:todo_id>', methods=['GET'])
@@ -41,6 +54,12 @@ def get_todo(todo_id):
 @api.route('/todos', methods=['POST'])
 def create_todo():
     """Create a new todo item and return the created item"""
+    if not set(request.json.keys()).issubset(set(('title', 'description', 'completed', 'deadline_at'))):
+        return jsonify({'error': 'extra fields'}), 400
+
+    if "title" not in request.json:
+        return jsonify({'error': 'missing title'}), 400
+
     todo = Todo( 
         title=request.json.get('title'), 
         description=request.json.get('description'), 
@@ -58,6 +77,9 @@ def create_todo():
 @api.route('/todos/<int:todo_id>', methods=['PUT'])
 def update_todo(todo_id):
     """Update a todo item and return the updated item"""
+    if not set(request.json.keys()).issubset(set(('title', 'description', 'completed', 'deadline_at'))):
+        return jsonify({'error': 'extra fields'}), 400
+
     todo = Todo.query.get(todo_id) 
     if todo is None: 
         return jsonify({'error': 'Todo not found'}), 404 
